@@ -580,6 +580,32 @@
             </div>
         </div>
 
+        <!-- ================= TOPIC 5: ANNOUNCEMENTS ================= -->
+        <!-- Slide 13: Announcements (Dynamic Text File) -->
+        <div class="slide slide-hidden absolute inset-0 w-full h-full bg-mosque-bgdark" id="slide-13">
+            <div class="absolute inset-0 bg-islamic opacity-10"></div>
+            
+            <div class="absolute inset-0 flex flex-col justify-center p-20 z-10">
+                <div class="flex items-center gap-6 mb-12 justify-center">
+                    <i class="fa-solid fa-bullhorn text-6xl text-mosque-gold"></i>
+                    <h1 class="text-7xl font-black text-white uppercase tracking-widest text-shadow-tv">Announcements</h1>
+                </div>
+                
+                <!-- Frame for Announcement Text -->
+                <div class="w-full max-w-5xl mx-auto flex-grow bg-white/5 border-4 border-mosque-gold/50 rounded-3xl p-12 shadow-2xl relative overflow-hidden backdrop-blur-md flex flex-col">
+                    <!-- Decorative Corners -->
+                    <div class="absolute top-0 left-0 w-16 h-16 border-t-4 border-l-4 border-mosque-gold rounded-tl-2xl"></div>
+                    <div class="absolute top-0 right-0 w-16 h-16 border-t-4 border-r-4 border-mosque-gold rounded-tr-2xl"></div>
+                    <div class="absolute bottom-0 left-0 w-16 h-16 border-b-4 border-l-4 border-mosque-gold rounded-bl-2xl"></div>
+                    <div class="absolute bottom-0 right-0 w-16 h-16 border-b-4 border-r-4 border-mosque-gold rounded-br-2xl"></div>
+                    
+                    <div id="announcement-content" class="text-4xl text-gray-200 leading-relaxed whitespace-pre-wrap font-medium flex-grow flex items-center justify-center text-center">
+                        Loading announcements...
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Slide Progress Bar (Bottom Edge) -->
         <div class="absolute bottom-0 left-0 w-full h-2 bg-gray-800 z-50">
             <div id="slide-progress" class="h-full bg-mosque-gold w-0 transition-all duration-[12000ms] ease-linear"></div>
@@ -669,7 +695,6 @@
         /* ==========================================
            3. LIVE PRAYER TIMES BACKGROUND FETCH
            ========================================== */
-        
         // Global array to hold parsed times for the countdown logic
         let todaysPrayerSchedule = [];
 
@@ -965,16 +990,45 @@
             return 0;
         }
 
+        /* ==========================================
+           6. ANNOUNCEMENT FETCH LOGIC
+           ========================================== */
+        async function fetchAnnouncements() {
+            try {
+                // Fetch ann.txt from the root folder
+                const response = await fetch('/ann.txt?cb=' + Date.now());
+                if (!response.ok) throw new Error("Could not fetch ann.txt");
+                
+                const text = await response.text();
+                const contentDiv = document.getElementById('announcement-content');
+                
+                if (text.trim() === '') {
+                    contentDiv.innerHTML = '<span class="italic text-gray-500">No new announcements at this time.</span>';
+                } else {
+                    // Update text, preserving line breaks
+                    contentDiv.textContent = text;
+                }
+            } catch (err) {
+                console.error("Failed to load announcements:", err);
+                document.getElementById('announcement-content').innerHTML = 
+                    '<span class="text-red-400">Failed to load announcements. Checking again soon...</span>';
+            }
+        }
+
         // ==========================================
         // INITIALIZATION & POLLING
         // ==========================================
         
         // Fetch immediately on load
         fetchPrayerTimesFromExcel();
+        fetchAnnouncements();
         
         // Fetch new data quietly in the background every 30 minutes to prevent memory leaks/reloads
         // 30 minutes = 30 * 60 * 1000 = 1800000 ms
         setInterval(fetchPrayerTimesFromExcel, 1800000);
+        
+        // Update announcements every 15 minutes (or adjust as needed)
+        setInterval(fetchAnnouncements, 900000); 
 
     </script>
 </body>
