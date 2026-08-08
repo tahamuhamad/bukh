@@ -708,7 +708,7 @@
         async function fetchPrayerTimesFromExcel() {
             try {
                 // Fetch with cache-busting parameter from root directory
-                const response = await fetch('/bukhary/prayer_times.xlsx?cb=' + Date.now());
+                const response = await fetch('/prayer_times.xlsx?cb=' + Date.now());
                 if (!response.ok) throw new Error("Excel file not found on server.");
                 
                 const arrayBuffer = await response.arrayBuffer();
