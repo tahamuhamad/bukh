@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en" class="overflow-hidden">
+<head>
+    <meta charset="UTF-8">
+    <!-- Configured for exact 1080p fit, no scaling -->
+    <meta name="viewport" content="width=1920, height=1080, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Al Bukhary Masjid - TV Display</title>
+    
+    <!-- Google Fonts: Inter for numbers/English, Amiri for Arabic/Kurdish Calligraphy -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&family=Amiri:wght@400;700&family=Noto+Kufi+Arabic:wght@400;700&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- SheetJS for parsing local prayer_times.xlsx (Keep this if you stick to Excel, remove if using DB API) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        mosque: {
+                            dark: '#064e3b',    // Deep Islamic Green
+                            primary: '#047857', // Rich Emerald
+                            light: '#10b981',   // Bright Green
+                            gold: '#d97706',    // Amber/Gold
+                            goldlight: '#f59e0b',
+                            bgdark: '#022c22'   // Ultra dark green for TV contrast
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        arabic: ['Noto Kufi Arabic', 'sans-serif'],
+                        calligraphy: ['Amiri', 'serif']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* TV Optimization: Hide cursor completely, prevent scrolling and selection */
+        body {
+            cursor: none !important;
+            overflow: hidden !important;
+            user-select: none;
+            background-color: #000; /* Prevent white flashes */
+            width: 100vw;
+            height: 100vh;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Seamless Slide Transitions */
+        .slide {
+            transition: opacity 1.5s ease-in-out, transform 1.5s ease-in-out;
+        }
+        
+        .slide-hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(1.02); /* Slight zoom effect on fade */
+        }
+        
+        .slide-visible {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        /* Ambient Background Pattern */
+        .bg-islamic {
+            background-image: url('https://www.transparenttextures.com/patterns/arabesque.png');
+            background-repeat: repeat;
+        }
+
+        /* Blinking colon for the digital clock */
+        .blink {
+            animation: blinker 1s linear infinite;
+        }
+        @keyframes blinker {
+            50% { opacity: 0; }
+        }
+
+        /* Enhancing text readability from a distance */
+        .text-shadow-tv {
+            text-shadow: 0px 4px 15px rgba(0, 0, 0, 0.8);
+        }
+    </style>
+</head>
+
+<body class="flex w-screen h-screen text-white bg-mosque-bgdark">
+
+    <!-- ========================================== -->
+    <!-- LEFT PANEL: PERSISTENT CLOCK & PRAYER TIMES -->
+    <!-- ========================================== -->
+    <aside class="w-[35%] h-full bg-mosque-dark border-r-8 border-mosque-gold flex flex-col relative overflow-hidden shadow-2xl z-20">
+        <!-- Background Pattern -->
+        <div class="absolute inset-0 bg-islamic opacity-10 mix-blend-overlay pointer-events-none"></div>
+        
+        <div class="relative z-10 flex flex-col h-full p-10">
+            
+            <!-- Logo & Title -->
+            <div class="flex items-center gap-6 mb-8">
+                <img src="logo.png" alt="Logo" class="h-24 w-auto drop-shadow-lg" onerror="this.src='https://placehold.co/150x150/047857/ffffff?text=Logo'">
+                <div>
+                    <h1 class="font-calligraphy text-5xl text-white font-bold tracking-wide">Al Bukhary</h1>
+                    <h2 class="text-2xl text-mosque-goldlight uppercase tracking-widest font-bold mt-1">Masjid</h2>
+                </div>
+            </div>
+
+            <!-- Live Clock & Date -->
+            <div class="bg-black/30 rounded-3xl p-8 mb-8 border border-white/10 backdrop-blur-sm text-center shadow-inner">
+                <div id="tv-clock" class="text-8xl font-black text-white mb-4 tracking-tighter drop-shadow-md">
+                    12<span class="blink text-mosque-gold">:</span>00
+                </div>
+                <div id="tv-date-gregorian" class="text-3xl font-semibold text-gray-200 mb-2">Monday, 1 Jan 2026</div>
+                <div id="tv-date-hijri" class="text-2xl font-medium text-mosque-goldlight">1 Rajab 1447 AH</div>
+            </div>
+
+            <!-- Next Prayer Alert -->
+            <div class="bg-gradient-to-r from-mosque-gold to-yellow-500 rounded-2xl p-6 mb-8 text-black shadow-xl flex justify-between items-center">
+                <div>
+                    <p class="text-xl font-bold uppercase tracking-wider opacity-80">Next Prayer</p>
+                    <p id="tv-next-prayer-name" class="text-4xl font-black mt-1">Loading...</p>
+                </div>
+                <div id="tv-countdown" class="text-5xl font-black tracking-tighter bg-black/10 px-6 py-3 rounded-xl">
+                    --:--
+                </div>
+            </div>
+
+            <!-- Prayer Times Table -->
+            <div class="flex-grow flex flex-col justify-between space-y-4">
+                
+                <!-- Table Header -->
+                <div class="flex text-gray-400 font-bold uppercase tracking-wider text-xl px-4 border-b border-white/20 pb-2">
+                    <div class="w-1/3">Prayer</div>
+                    <div class="w-1/3 text-center">Athan</div>
+                    <div class="w-1/3 text-right text-mosque-goldlight">Iqama</div>
+                </div>
+
+                <!-- Prayer Rows -->
+                <div class="flex items-center text-3xl font-bold px-4 py-2 bg-white/5 rounded-xl">
+                    <div class="w-1/3 text-white">Fajr</div>
+                    <div class="w-1/3 text-center" id="tv-fajr-athan">--:--</div>
+                    <div class="w-1/3 text-right text-mosque-goldlight" id="tv-fajr-iqama">--:--</div>
+                </div>
+
+                <div class="flex items-center text-3xl font-bold px-4 py-2">
+                    <div class="w-1/3 text-gray-300">Sunrise</div>
+                    <div class="w-1/3 text-center text-gray-300" id="tv-sunrise">--:--</div>
+                    <div class="w-1/3 text-right text-gray-500">----</div>
+                </div>
+
+                <div class="flex items-center text-3xl font-bold px-4 py-2 bg-white/5 rounded-xl">
+                    <div class="w-1/3 text-white">Dhuhr</div>
+                    <div class="w-1/3 text-center" id="tv-dhuhr-athan">--:--</div>
+                    <div class="w-1/3 text-right text-mosque-goldlight" id="tv-dhuhr-iqama">--:--</div>
+                </div>
+
+                <div class="flex items-center text-3xl font-bold px-4 py-2">
+                    <div class="w-1/3 text-white">Asr</div>
+                    <div class="w-1/3 text-center" id="tv-asr-athan">--:--</div>
+                    <div class="w-1/3 text-right text-mosque-goldlight" id="tv-asr-iqama">--:--</div>
+                </div>
+
+                <div class="flex items-center text-3xl font-bold px-4 py-2 bg-white/5 rounded-xl">
+                    <div class="w-1/3 text-white">Maghrib</div>
+                    <div class="w-1/3 text-center" id="tv-maghrib-athan">--:--</div>
+                    <div class="w-1/3 text-right text-mosque-goldlight" id="tv-maghrib-iqama">--:--</div>
+                </div>
+
+                <div class="flex items-center text-3xl font-bold px-4 py-2">
+                    <div class="w-1/3 text-white">Isha</div>
+                    <div class="w-1/3 text-center" id="tv-isha-athan">--:--</div>
+                    <div class="w-1/3 text-right text-mosque-goldlight" id="tv-isha-iqama">--:--</div>
+                </div>
+
+                <!-- Jum'ah Special Row -->
+                <div class="flex items-center text-3xl font-bold px-4 py-4 mt-2 bg-mosque-primary/30 border border-mosque-primary rounded-xl">
+                    <div class="w-1/2 text-white">Jum'ah</div>
+                    <div class="w-1/2 text-right text-mosque-goldlight" id="tv-jumah-iqama">--:--</div>
+                </div>
+
+            </div>
+        </div>
+    </aside>
+
+    <!-- ========================================== -->
+    <!-- RIGHT PANEL: DYNAMIC SLIDER CONTENT        -->
+    <!-- ========================================== -->
+    <main class="w-[65%] h-full relative bg-gray-900 overflow-hidden">
+        
+        <!-- Slide 1: Welcome & Mission -->
+        <div class="slide slide-visible absolute inset-0 w-full h-full" id="slide-1">
+            <img src="mainpage.png" alt="Background" class="absolute inset-0 w-full h-full object-cover opacity-40" onerror="this.src='https://placehold.co/1920x1080/022c22/ffffff?text=Masjid+Background'">
+            <div class="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent"></div>
+            
+            <div class="absolute inset-0 flex flex-col items-center justify-center text-center p-20 z-10">
+                <i class="fa-solid fa-mosque text-mosque-gold text-8xl mb-8 drop-shadow-lg"></i>
+                <h1 class="text-7xl font-black text-white mb-6 text-shadow-tv uppercase tracking-widest">Welcome to<br><span class="text-mosque-gold">Al Bukhary Masjid</span></h1>
+                <div class="w-48 h-2 bg-mosque-primary mx-auto mb-10 rounded-full"></div>
+                <p class="text-4xl text-gray-200 leading-tight max-w-4xl text-shadow-tv font-medium">
+                    Spreading the Qur’an and the Sunnah according to the understanding of the righteous predecessors (Salaf) of the Ummah.
+                </p>
+                <p class="text-3xl text-mosque-goldlight mt-8 font-semibold bg-black/40 px-8 py-4 rounded-2xl backdrop-blur-sm border border-white/10">
+                    Serving the Kurdish community in particular.
+                </p>
+            </div>
+        </div>
+
+        <!-- Slide 2: The New Mosque Project (Donation Focus) -->
+        <div class="slide slide-hidden absolute inset-0 w-full h-full bg-mosque-dark" id="slide-2">
+            <div class="absolute inset-0 bg-islamic opacity-5"></div>
+            <div class="absolute inset-0 flex flex-col justify-center p-20 z-10">
+                
+                <div class="flex items-center gap-6 mb-12">
+                    <div class="w-24 h-24 bg-mosque-gold rounded-2xl flex items-center justify-center shadow-xl">
+                        <i class="fa-solid fa-hammer text-6xl text-white"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-4xl font-bold text-mosque-goldlight uppercase tracking-wider mb-2">Build for the Future</h2>
+                        <h1 class="text-7xl font-black text-white">The New Mosque Project</h1>
+                    </div>
+                </div>
+
+                <p class="text-4xl text-gray-200 leading-snug mb-16 max-w-5xl">
+                    Our community is growing rapidly, and our current facility has reached its absolute limit. Help us build a purpose-built Masjid to accommodate everyone.
+                </p>
+
+                <div class="grid grid-cols-2 gap-10 mb-16">
+                    <div class="bg-white/10 p-8 rounded-3xl border border-white/20">
+                        <i class="fa-solid fa-users text-5xl text-mosque-light mb-6"></i>
+                        <h3 class="text-4xl font-bold text-white mb-4">Expanded Spaces</h3>
+                        <p class="text-2xl text-gray-300">Larger prayer areas so no one prays on pavements during Jummah.</p>
+                    </div>
+                    <div class="bg-white/10 p-8 rounded-3xl border border-white/20">
+                        <i class="fa-solid fa-book-open-reader text-5xl text-mosque-light mb-6"></i>
+                        <h3 class="text-4xl font-bold text-white mb-4">New Classrooms</h3>
+                        <p class="text-2xl text-gray-300">Dedicated spaces for madrassa and weekend Islamic education.</p>
+                    </div>
+                </div>
+
+                <div class="bg-mosque-gold text-black p-8 rounded-3xl flex items-center justify-between shadow-2xl mt-auto">
+                    <div>
+                        <h3 class="text-4xl font-black mb-2">Get Involved Today</h3>
+                        <p class="text-2xl font-bold opacity-80">Help light the path for generations to come.</p>
+                    </div>
+                    <div class="text-right flex items-center gap-6 bg-black/10 px-8 py-4 rounded-2xl">
+                        <i class="fa-solid fa-phone-volume text-5xl"></i>
+                        <span class="text-5xl font-black">Call the Imam</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 3: Weekly Lectures -->
+        <div class="slide slide-hidden absolute inset-0 w-full h-full bg-gray-900" id="slide-3">
+            <div class="absolute inset-0 flex flex-col justify-center p-20 z-10">
+                
+                <div class="text-center mb-20">
+                    <h2 class="text-4xl font-bold text-mosque-primary uppercase tracking-wider mb-4">Educational Programs</h2>
+                    <h1 class="text-7xl font-black text-white">Weekly Lectures</h1>
+                    <div class="w-32 h-2 bg-mosque-gold mx-auto mt-8 rounded-full"></div>
+                </div>
+
+                <div class="space-y-12">
+                    <!-- Lecture 1 -->
+                    <div class="bg-gradient-to-r from-mosque-dark to-mosque-primary rounded-3xl p-10 flex items-center gap-10 shadow-2xl border border-white/10 border-l-8 border-l-mosque-gold">
+                        <div class="w-32 h-32 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
+                            <i class="fa-solid fa-book-quran text-6xl text-white"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-5xl font-bold text-white mb-4">Treasures of the Qur'an</h3>
+                            <p class="text-3xl text-gray-200">Tafseer and deeper understanding of the Holy Book.</p>
+                        </div>
+                    </div>
+
+                    <!-- Lecture 2 -->
+                    <div class="bg-gradient-to-r from-mosque-dark to-mosque-primary rounded-3xl p-10 flex items-center gap-10 shadow-2xl border border-white/10 border-l-8 border-l-mosque-gold">
+                        <div class="w-32 h-32 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
+                            <i class="fa-solid fa-scroll text-6xl text-white"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-5xl font-bold text-white mb-4">The Garden of Hadiths</h3>
+                            <p class="text-3xl text-gray-200">Study of Sahih Al-Bukhary.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-20 text-center bg-white/5 p-8 rounded-3xl border border-white/10 inline-block mx-auto">
+                    <p class="text-4xl font-bold text-mosque-goldlight flex items-center justify-center gap-4">
+                        <i class="fa-regular fa-calendar-check"></i>
+                        Schedule: Tuesday, Thursday, Friday
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 4: Services Overview -->
+        <div class="slide slide-hidden absolute inset-0 w-full h-full bg-mosque-dark" id="slide-4">
+            <div class="absolute inset-0 bg-islamic opacity-10"></div>
+            <div class="absolute inset-0 flex flex-col justify-center p-20 z-10">
+                
+                <h1 class="text-7xl font-black text-white mb-16 text-center">Our Services</h1>
+
+                <div class="grid grid-cols-2 gap-10">
+                    <div class="bg-white/10 p-10 rounded-3xl backdrop-blur-md border border-white/20">
+                        <i class="fa-solid fa-hands-holding-child text-6xl text-mosque-goldlight mb-6"></i>
+                        <h3 class="text-4xl font-bold text-white mb-4">Islamic Education</h3>
+                        <p class="text-2xl text-gray-300 leading-relaxed">Comprehensive Madrasa for children and adults focusing on Quran and Tajweed.</p>
+                    </div>
+                    
+                    <div class="bg-white/10 p-10 rounded-3xl backdrop-blur-md border border-white/20">
+                        <i class="fa-solid fa-hand-holding-dollar text-6xl text-mosque-goldlight mb-6"></i>
+                        <h3 class="text-4xl font-bold text-white mb-4">Zakat & Charity</h3>
+                        <p class="text-2xl text-gray-300 leading-relaxed">Collection and distribution of Zakat, Sadaqah, and running food banks.</p>
+                    </div>
+
+                    <div class="bg-white/10 p-10 rounded-3xl backdrop-blur-md border border-white/20">
+                        <i class="fa-solid fa-ring text-6xl text-mosque-goldlight mb-6"></i>
+                        <h3 class="text-4xl font-bold text-white mb-4">Marriage (Nikah)</h3>
+                        <p class="text-2xl text-gray-300 leading-relaxed">Official Islamic ceremonies and pre-marital counseling.</p>
+                    </div>
+
+                    <div class="bg-white/10 p-10 rounded-3xl backdrop-blur-md border border-white/20">
+                        <i class="fa-solid fa-hands-praying text-6xl text-mosque-goldlight mb-6"></i>
+                        <h3 class="text-4xl font-bold text-white mb-4">Funeral Services</h3>
+                        <p class="text-2xl text-gray-300 leading-relaxed">Complete Janazah services including Ghusl, shrouding, and burial.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide Progress Bar (Bottom Edge) -->
+        <div class="absolute bottom-0 left-0 w-full h-2 bg-gray-800 z-50">
+            <div id="slide-progress" class="h-full bg-mosque-gold w-0 transition-all duration-[12000ms] ease-linear"></div>
+        </div>
+    </main>
+
+    <script>
+        /* ==========================================
+           1. TV DISPLAY SLIDER LOGIC
+           ========================================== */
+        const slides = document.querySelectorAll('.slide');
+        const progressBar = document.getElementById('slide-progress');
+        let currentSlide = 0;
+        const slideIntervalMs = 12000; // 12 seconds per slide
+
+        function animateProgressBar() {
+            // Reset progress bar
+            progressBar.style.transition = 'none';
+            progressBar.style.width = '0%';
+            
+            // Force browser reflow to apply reset instantly
+            void progressBar.offsetWidth; 
+            
+            // Start animation
+            progressBar.style.transition = `width ${slideIntervalMs}ms linear`;
+            progressBar.style.width = '100%';
+        }
+
+        function nextSlide() {
+            // Fade out current
+            slides[currentSlide].classList.remove('slide-visible');
+            slides[currentSlide].classList.add('slide-hidden');
+            
+            // Move to next
+            currentSlide = (currentSlide + 1) % slides.length;
+            
+            // Fade in new
+            slides[currentSlide].classList.remove('slide-hidden');
+            slides[currentSlide].classList.add('slide-visible');
+
+            animateProgressBar();
+        }
+
+        // Start slide rotation
+        setInterval(nextSlide, slideIntervalMs);
+        animateProgressBar(); // Initial call
+
+
+        /* ==========================================
+           2. LIVE CLOCK & DATES LOGIC
+           ========================================== */
+        function updateClock() {
+            const now = new Date();
+            
+            // Time (HH:MM)
+            let hours = now.getHours();
+            let minutes = now.getMinutes();
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            
+            hours = hours % 12;
+            hours = hours ? hours : 12; // the hour '0' should be '12'
+            const minStr = minutes < 10 ? '0' + minutes : minutes;
+            
+            // Custom HTML with blinking colon
+            document.getElementById('tv-clock').innerHTML = 
+                `${hours}<span class="blink text-mosque-gold">:</span>${minStr} <span class="text-4xl ml-2 text-gray-400">${ampm}</span>`;
+
+            // Gregorian Date
+            const gregOptions = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
+            document.getElementById('tv-date-gregorian').textContent = now.toLocaleDateString('en-GB', gregOptions);
+
+            // Hijri Date
+            try {
+                const hijriFormatter = new Intl.DateTimeFormat('en-US-u-ca-islamic-umalqura', {
+                    day: 'numeric', month: 'long', year: 'numeric'
+                });
+                document.getElementById('tv-date-hijri').textContent = hijriFormatter.format(now) + " AH";
+            } catch (e) {
+                console.warn("Hijri formatting error", e);
+            }
+        }
+        
+        setInterval(updateClock, 1000);
+        updateClock(); // Initial call
+
+
+        /* ==========================================
+           3. LIVE PRAYER TIMES BACKGROUND FETCH
+           ========================================== */
+        
+        // Global array to hold parsed times for the countdown logic
+        let todaysPrayerSchedule = [];
+
+        /* 
+           >>> BACKEND INTEGRATION INSTRUCTIONS <<<
+           To fetch directly from your database/API instead of Excel:
+           1. Comment out or delete the 'fetchPrayerTimesFromExcel' block below.
+           2. Uncomment the 'fetchPrayerTimesFromAPI' block.
+           3. Replace 'YOUR_API_ENDPOINT_URL_HERE' with your actual endpoint (e.g., '/api/prayers/today').
+           4. Ensure your API returns JSON in a format you can parse and pass to 'renderPrayerDataToDOM()'.
+        */
+
+        async function fetchPrayerTimesFromAPI() {
+            /*
+            try {
+                const response = await fetch('YOUR_API_ENDPOINT_URL_HERE?cb=' + Date.now());
+                const data = await response.json();
+                
+                // Assuming data object looks like: { fajr: "04:30 AM", fajrIqama: "05:00 AM", ... }
+                renderPrayerDataToDOM({
+                    fajr: data.fajr, fajrIqama: data.fajrIqama,
+                    sunrise: data.sunrise,
+                    dhuhr: data.dhuhr, dhuhrIqama: data.dhuhrIqama,
+                    asr: data.asr, asrIqama: data.asrIqama,
+                    maghrib: data.maghrib, maghribIqama: data.maghribIqama,
+                    isha: data.isha, ishaIqama: data.ishaIqama,
+                    jumahIqama: data.jumahIqama
+                });
+            } catch (err) {
+                console.error("API Fetch Error:", err);
+            }
+            */
+        }
+
+        // Default logic pulling from Excel (as per main website setup)
+        async function fetchPrayerTimesFromExcel() {
+            try {
+                // Fetch with cache-busting parameter to ensure fresh data always
+                const response = await fetch('prayer_times.xlsx?cb=' + Date.now());
+                if (!response.ok) throw new Error("Excel file not found");
+                
+                const arrayBuffer = await response.arrayBuffer();
+                const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array', cellDates: true });
+                const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(worksheet);
+                
+                const todayStr = getLocalYMD(new Date());
+                let todayRow = rows.find(r => getRowDateString(r) === todayStr);
+
+                // Find Jumah Time (Next Friday)
+                let jumahVal = "01:30 PM"; // Default fallback
+                const todayDate = new Date();
+                const daysUntilFriday = (5 - todayDate.getDay() + 7) % 7;
+                const nextFridayDate = new Date(todayDate);
+                nextFridayDate.setDate(todayDate.getDate() + daysUntilFriday);
+                const nextFridayStr = getLocalYMD(nextFridayDate);
+                
+                let nextFridayRow = rows.find(r => getRowDateString(r) === nextFridayStr);
+                if (nextFridayRow) {
+                    jumahVal = cleanTimeFormat(getRowValueCaseInsensitive(nextFridayRow, "Dhuhr-aiqama")) || jumahVal;
+                }
+
+                if (todayRow) {
+                    renderPrayerDataToDOM({
+                        fajr: cleanTimeFormat(getRowValueCaseInsensitive(todayRow, "Fajr")),
+                        fajrIqama: cleanTimeFormat(getRowValueCaseInsensitive(todayRow, "Aiqama_FAJR")),
+                        sunrise: cleanTimeFormat(getRowValueCaseInsensitive(todayRow, "sunRiSe") || getRowValueCaseInsensitive(todayRow, "sunrise")),
+                        dhuhr: cleanTimeFormat(getRowValueCaseInsensitive(todayRow, "Dhuhr")),
+                        dhuhrIqama: cleanTimeFormat(getRowValueCaseInsensitive(todayRow, "Dhuhr-aiqama")),
+                        asr: cleanTimeFormat(getRowValueCaseInsensitive(todayRow, "Asr")),
+                        asrIqama: cleanTimeFormat(getRowValueCaseInsensitive(todayRow, "Asr-aiqama")),
+                        maghrib: cleanTimeFormat(getRowValueCaseInsensitive(todayRow, "Maghrib")),
+                        maghribIqama: cleanTimeFormat(getRowValueCaseInsensitive(todayRow, "Maghrib_Aiqama")),
+                        isha: cleanTimeFormat(getRowValueCaseInsensitive(todayRow, "Isha")),
+                        ishaIqama: cleanTimeFormat(getRowValueCaseInsensitive(todayRow, "Isha_Aiqama")),
+                        jumahIqama: jumahVal
+                    });
+                } else {
+                    throw new Error("No data row found for today's date.");
+                }
+
+            } catch (err) {
+                console.error("Data Fetch Error:", err.message);
+                // Fallback Mock Data so the TV screen never goes blank/broken
+                renderPrayerDataToDOM({
+                    fajr: "04:30 AM", fajrIqama: "05:00 AM",
+                    sunrise: "05:45 AM",
+                    dhuhr: "12:15 PM", dhuhrIqama: "12:45 PM",
+                    asr: "04:45 PM", asrIqama: "05:15 PM",
+                    maghrib: "07:20 PM", maghribIqama: "07:35 PM",
+                    isha: "08:50 PM", ishaIqama: "09:15 PM",
+                    jumahIqama: "01:30 PM"
+                });
+            }
+        }
+
+        // Maps the standard JSON object to the HTML elements
+        function renderPrayerDataToDOM(data) {
+            document.getElementById('tv-fajr-athan').textContent = data.fajr;
+            document.getElementById('tv-fajr-iqama').textContent = data.fajrIqama;
+            document.getElementById('tv-sunrise').textContent = data.sunrise;
+            document.getElementById('tv-dhuhr-athan').textContent = data.dhuhr;
+            document.getElementById('tv-dhuhr-iqama').textContent = data.dhuhrIqama;
+            document.getElementById('tv-asr-athan').textContent = data.asr;
+            document.getElementById('tv-asr-iqama').textContent = data.asrIqama;
+            document.getElementById('tv-maghrib-athan').textContent = data.maghrib;
+            document.getElementById('tv-maghrib-iqama').textContent = data.maghribIqama;
+            document.getElementById('tv-isha-athan').textContent = data.isha;
+            document.getElementById('tv-isha-iqama').textContent = data.ishaIqama;
+            document.getElementById('tv-jumah-iqama').textContent = data.jumahIqama;
+
+            // Setup internal array for countdown calculation (using minutes from midnight)
+            todaysPrayerSchedule = [
+                { name: 'Fajr', timeMin: timeStringToMinutes(data.fajr, 'fajr') },
+                { name: 'Dhuhr', timeMin: timeStringToMinutes(data.dhuhr, 'dhuhr') },
+                { name: 'Asr', timeMin: timeStringToMinutes(data.asr, 'asr') },
+                { name: 'Maghrib', timeMin: timeStringToMinutes(data.maghrib, 'maghrib') },
+                { name: 'Isha', timeMin: timeStringToMinutes(data.isha, 'isha') }
+            ];
+            
+            updateNextPrayerCountdown();
+        }
+
+        /* ==========================================
+           4. COUNTDOWN CALCULATOR
+           ========================================== */
+        function updateNextPrayerCountdown() {
+            if (!todaysPrayerSchedule || todaysPrayerSchedule.length === 0) return;
+
+            const now = new Date();
+            const currentMin = now.getHours() * 60 + now.getMinutes();
+            const currentSec = now.getSeconds();
+            
+            let nextPrayer = null;
+            let isNextDay = false;
+
+            for (let i = 0; i < todaysPrayerSchedule.length; i++) {
+                if (currentMin < todaysPrayerSchedule[i].timeMin) {
+                    nextPrayer = todaysPrayerSchedule[i];
+                    break;
+                }
+            }
+
+            if (!nextPrayer) {
+                nextPrayer = todaysPrayerSchedule[0]; // Fajr tomorrow
+                isNextDay = true;
+            }
+
+            // Target DateTime calculation
+            const targetDate = new Date(now);
+            targetDate.setHours(Math.floor(nextPrayer.timeMin / 60), nextPrayer.timeMin % 60, 0, 0);
+            if (isNextDay) {
+                targetDate.setDate(targetDate.getDate() + 1);
+            }
+
+            const diffMs = targetDate - now;
+            const diffSeconds = Math.max(0, Math.floor(diffMs / 1000));
+
+            const h = Math.floor(diffSeconds / 3600);
+            const m = Math.floor((diffSeconds % 3600) / 60);
+            const s = diffSeconds % 60;
+
+            const hStr = h > 0 ? h.toString().padStart(2, '0') + ':' : '';
+            const mStr = m.toString().padStart(2, '0') + ':';
+            const sStr = s.toString().padStart(2, '0');
+
+            document.getElementById('tv-next-prayer-name').textContent = nextPrayer.name;
+            
+            // Blink countdown if under 15 minutes
+            const cdElement = document.getElementById('tv-countdown');
+            cdElement.textContent = hStr + mStr + sStr;
+            
+            if (h === 0 && m < 15) {
+                cdElement.classList.add('text-red-500');
+            } else {
+                cdElement.classList.remove('text-red-500');
+            }
+        }
+        setInterval(updateNextPrayerCountdown, 1000);
+
+        /* ==========================================
+           5. UTILITY FUNCTIONS FOR EXCEL PARSING
+           ========================================== */
+        function getLocalYMD(date) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        function getRowDateString(row) {
+            const rawDays = getRowValueCaseInsensitive(row, "DAYS") || getRowValueCaseInsensitive(row, "DAY") || getRowValueCaseInsensitive(row, "DATE");
+            if (!rawDays) return "";
+            if (rawDays instanceof Date) return getLocalYMD(rawDays);
+            if (!isNaN(rawDays) && parseFloat(rawDays) > 20000) {
+                const date = new Date((parseFloat(rawDays) - 25569) * 86400 * 1000);
+                return getLocalYMD(date);
+            }
+            let str = String(rawDays).trim();
+            const dmyMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+            if (dmyMatch) return `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`;
+            const ymdMatch = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+            if (ymdMatch) return `${ymdMatch[1]}-${ymdMatch[2].padStart(2, '0')}-${ymdMatch[3].padStart(2, '0')}`;
+            return str;
+        }
+
+        function getRowValueCaseInsensitive(row, colName) {
+            const cleanName = colName.trim().toLowerCase().replace(/[-_\s]/g, '');
+            const key = Object.keys(row).find(k => k.trim().toLowerCase().replace(/[-_\s]/g, '') === cleanName);
+            return key ? row[key] : undefined;
+        }
+
+        function cleanTimeFormat(rawTime) {
+            if (!rawTime) return null;
+            let h = 0, m = 0;
+            if (rawTime instanceof Date) {
+                h = rawTime.getHours(); m = rawTime.getMinutes();
+            } else if (typeof rawTime === 'number' || (!isNaN(rawTime) && parseFloat(rawTime) < 1)) {
+                const totalSeconds = Math.round(parseFloat(rawTime) * 24 * 60 * 60);
+                h = Math.floor(totalSeconds / 3600); m = Math.floor((totalSeconds % 3600) / 60);
+            } else {
+                const parts = String(rawTime).trim().split(':');
+                if (parts.length >= 2) { h = parseInt(parts[0], 10); m = parseInt(parts[1], 10); } 
+                else return String(rawTime);
+            }
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            const displayH = h % 12 || 12;
+            return `${displayH.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} ${ampm}`;
+        }
+
+        function timeStringToMinutes(timeStr, hint) {
+            if (!timeStr) return 0;
+            const isPM = timeStr.toLowerCase().includes('pm');
+            const isAM = timeStr.toLowerCase().includes('am');
+            const match = timeStr.match(/(\d{1,2}):(\d{2})/);
+            if (match) {
+                let h = parseInt(match[1], 10);
+                let m = parseInt(match[2], 10);
+                if (isPM && h < 12) h += 12;
+                if (isAM && h === 12) h = 0;
+                if (!isPM && !isAM && ['dhuhr', 'asr', 'maghrib', 'isha'].includes(hint) && h < 12) {
+                    if (!(hint === 'dhuhr' && h === 12)) h += 12;
+                }
+                return h * 60 + m;
+            }
+            return 0;
+        }
+
+        // ==========================================
+        // INITIALIZATION & POLLING
+        // ==========================================
+        
+        // Fetch immediately on load
+        fetchPrayerTimesFromExcel();
+        
+        // Fetch new data quietly in the background every 30 minutes to prevent memory leaks/reloads
+        // 30 minutes = 30 * 60 * 1000 = 1800000 ms
+        setInterval(fetchPrayerTimesFromExcel, 1800000);
+
+    </script>
+</body>
+</html>
